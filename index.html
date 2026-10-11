@@ -1479,7 +1479,7 @@ function onEvents(es) {
       case 'perk':
         NET.perks[e.p] = e.d; Snd.perk(); toast('ميزة: ' + PERK_AR[e.p] + ' (' + e.d + ' ث)', 2000);
         break;
-      case 'shove': P.shx = (P.shx || 0) + e.dx * 760; P.shy = (P.shy || 0) + e.dy * 760; game.shake = Math.max(game.shake, 0.6); Snd.push(0); toast((NET.names[e.from] || 'لاعب') + ' دفعك!', 1400); break;
+      case 'shove': { const f = e.r ? 450 : 1900; P.shx = (P.shx || 0) + e.dx * f; P.shy = (P.shy || 0) + e.dy * f; game.shake = Math.max(game.shake, e.r ? 0.3 : 0.9); Snd.push(0); if (!e.r) toast((NET.names[e.from] || 'لاعب') + ' دفعك!', 1400); break; }
       case 'push': { const a = posOf(e.a); NET.fx.push({ x: a.x, y: a.y, a: 1 }); Snd.push(clamp((a.x - ep.x) / 450, -1, 1)); break; }
       case 'pushno': P.pcd = Math.min(P.pcd || 0, 0.7); break;
       case 'die':

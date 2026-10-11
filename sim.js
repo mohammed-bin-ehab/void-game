@@ -289,12 +289,13 @@ class Sim {
   /* a shove; returns the target or null */
   push(p) {
     if (!p.alive || this.t < p.pushCd) return null;
-    let best = null, bd = 70;
+    let best = null, bd = 95;
     for (const o of this.alive()) { if (o === p) continue; const d = Math.hypot(o.x - p.x, o.y - p.y); if (d < bd) { bd = d; best = o; } }
     if (!best) { p.pushCd = this.t + 0.7; this.emit({ k: 'pushno', to: p.id }); return null; }
     p.pushCd = this.t + 2.6;
     const dx = best.x - p.x, dy = best.y - p.y, l = Math.hypot(dx, dy) || 1;
     this.emit({ k: 'shove', to: best.id, dx: r1(dx / l), dy: r1(dy / l), from: p.id });
+    this.emit({ k: 'shove', to: p.id, dx: r1(-dx / l), dy: r1(-dy / l), from: best.id, r: 1 });
     this.emit({ k: 'push', a: p.id, b: best.id });
     return best;
   }
