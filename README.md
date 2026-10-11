@@ -1,4 +1,18 @@
 # VOID — ظلّ الفجوة
-- client/index.html : اللعبة (ملف واحد، Three.js من CDN)
-- server/ : خادم الغرف (WebSocket) — قيد الإنشاء
-افتح client/index.html في المتصفح للعب منفرداً (يحتاج إنترنت لتحميل Three.js والخطوط).
+
+- `client/index.html` — اللعبة (ملف واحد، Three.js من CDN)
+- `server/` — خادم الغرف (Node + WebSocket) يخدم اللعبة أيضاً
+
+## تشغيل محلي
+```
+cd server
+npm install
+npm start            # http://localhost:3000
+MIN_PLAYERS=1 npm start   # للتجربة بلاعب واحد
+npm test             # اختبار آلي بلاعبين وهميين
+```
+
+## الحالة
+- [x] الخادم: غرف حتى 8، «جاهز»، البدء للمضيف، ثقب يلاحق الأقرب، دفع، إطفاء إضاءة، مزايا تلقائية، آخر ناجٍ
+- [ ] واجهة اللاعبين المتعددين في client (قيد العمل)
+- [ ] أصوات رعب
