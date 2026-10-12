@@ -269,12 +269,13 @@ class Sim {
   un(k) { return CFG.unlock[k] * this.D.unlock * 0.8; }
 
   /* a player reports where it is; bounds and distance are checked, then perks are earned by moving */
-  report(p, x, y, vx, vy, dashing) {
+  report(p, x, y, vx, vy, dashing, lat) {
     if (!p.alive) return;
     x = clamp(+x || 0, PM, W - PM); y = clamp(+y || 0, PM, H - PM);
     const step = Math.hypot(x - p.x, y - p.y);
     if (step > 260) { /* implausible jump: ignore */ return; }
     p.dist += Math.min(step, 40);
+    if (lat !== undefined) p.lat = clamp((+lat || 0) / 2000, 0, 0.15);
     p.x = x; p.y = y; p.vx = clamp(+vx || 0, -1500, 1500); p.vy = clamp(+vy || 0, -1500, 1500); p.dashing = !!dashing;
     const need = 2200 + p.perkN * 400;
     if (p.dist >= need) {
@@ -325,18 +326,19 @@ class Sim {
       const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1, min = a.effR() + b.effR();
       if (d < min) { const p = (min - d) * 0.5; a.x -= dx / d * p; a.y -= dy / d * p; b.x += dx / d * p; b.y += dy / d * p; }
     }
-    // who is falling
+    // who is falling (the zone shrinks with the player's latency so lag never kills from a distance)
     for (const p of this.alive()) {
       let rate = 0, who = null;
       for (const v of this.voids) {
         if (v.state === 'hidden' || v.grow < 0.8) continue;
-        const er = v.effR(), d = Math.hypot(v.x - p.x, v.y - p.y), zone = er * (v.state === 'dash' ? 0.85 : 0.92);
+        const er = v.effR(), d = Math.hypot(v.x - p.x, v.y - p.y), vsp = v.lx === undefined ? 0 : Math.hypot(v.x - v.lx, v.y - v.ly) / Math.max(dt, 0.001), zone = er * (v.state === 'dash' ? 0.8 : 0.9) - Math.min(70, vsp * (p.lat || 0) * 1.5);
         if (d < zone) { const r = v.state === 'dash' ? 1 / 0.06 : 1 / this.D.sink; if (r > rate) { rate = r; who = v; } }
       }
       if (who && this.t > p.shieldUntil) { p.sink += rate * dt; p.sinkV = who; }
       else p.sink = Math.max(0, p.sink - dt * 3.5);
       if (p.sink >= 1) this.kill(p, p.sinkV, 'void');
     }
+    for (const v of this.voids) { v.lx = v.x; v.ly = v.y; }
     // the lights go out for everyone, and the void gets bolder in the dark
     this.darkT -= dt;
     if (this.darkLeft > 0) this.darkLeft -= dt;

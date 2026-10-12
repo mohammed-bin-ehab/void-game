@@ -1324,7 +1324,7 @@ const palHex = id => '#' + PAL[(id - 1) % 8].toString(16).padStart(6, '0');
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const SN = ['spawn', 'stalk', 'telegraph', 'dash', 'spiral', 'vanish', 'hidden', 'appear'];
 const PERK_AR = { speed: 'سرعة', lantern: 'فانوس أقوى', shield: 'درع', dash: 'اندفاع سريع' };
-const NET = { on: false, ws: null, phase: 'lobby', id: 0, room: '', host: 0, mode: 'normal', lob: null, names: {}, order: [], rem: {}, vmap: new Map(), snaps: [], last: null, lastRt: 0,
+const NET = { delay: 110, jit: 0, lastArr: 0, rtt: 0, on: false, ws: null, phase: 'lobby', id: 0, room: '', host: 0, mode: 'normal', lob: null, names: {}, order: [], rem: {}, vmap: new Map(), snaps: [], last: null, lastRt: 0,
   alive: true, count: 0, perks: { speed: 0, lantern: 0, dash: 0, shield: 0 }, darkUntil: 0, spec: 0, specPos: null, ping: 0, sendT: 0, view: null, err: '', res: null, joined: false,
   fx: [], uiT: 0, pingT: 0, overT: 0, rosterSig: '', toastT: 0, total: 0 };
 const mpbar = $('mpbar'), perksEl = $('perks'), toastEl = $('toast'), countEl = $('countEl'), rosterEl = $('roster'), pushBtn = $('pushbtn');
@@ -1389,7 +1389,8 @@ function netMsg(m) {
     case 'start': startMP(m); break;
     case 'go': NET.phase = 'play'; countEl.textContent = 'اذهب'; setTimeout(() => { if (NET.phase === 'play') countEl.hidden = true; }, 700); Snd.light(); break;
     case 's':
-      NET.snaps.push({ rt: performance.now(), s: m }); if (NET.snaps.length > 8) NET.snaps.shift();
+      { const t0 = performance.now(); if (NET.lastArr) { const gap = t0 - NET.lastArr, dev = Math.abs(gap - 33); NET.jit += (dev - NET.jit) * 0.08; NET.delay += (clamp(70 + NET.jit * 2.6, 85, 240) - NET.delay) * 0.05; } NET.lastArr = t0; }
+      NET.snaps.push({ rt: performance.now(), s: m }); if (NET.snaps.length > 12) NET.snaps.shift();
       NET.last = m; NET.lastRt = performance.now();
       if (m.e) onEvents(m.e);
       break;
@@ -1444,7 +1445,7 @@ function removeRemotes() {
 /* ---- snapshots: render a little in the past and blend the two nearest ---- */
 function netView(now) {
   const S = NET.snaps; if (!S.length) return null;
-  const rt = now - 85; let a = S[0], b = S[0], al = 0;
+  const rt = now - NET.delay; let a = S[0], b = S[0], al = 0;
   for (let i = S.length - 1; i >= 1; i--) if (S[i - 1].rt <= rt) { a = S[i - 1]; b = S[i]; al = clamp((rt - a.rt) / Math.max(1, b.rt - a.rt), 0, 1.25); break; }
   if (a === b && S.length > 1 && rt > S[S.length - 1].rt) { a = S[S.length - 2]; b = S[S.length - 1]; al = 1.25; }
   const pa = {}; for (const p of a.s.p) pa[p[0]] = p;
@@ -1453,11 +1454,16 @@ function netView(now) {
     const p = pa[q[0]] || q;
     players[q[0]] = { x: lerp(p[1], q[1], al), y: lerp(p[2], q[2], al), vx: q[3], vy: q[4], alive: q[5], sink: q[6], shield: q[7], dash: q[8] };
   }
-  const va = {}; for (const v of a.s.v) va[v.i] = v;
+  /* voids are drawn where the server has them NOW (latest snapshot + short extrapolation), so what you see is what can kill you */
+  const L = S[S.length - 1], K = S.length > 1 ? S[S.length - 2] : L;
+  const dtS = Math.max(0.001, (L.s.n - K.s.n)), ex = clamp((now - L.rt) / 1000, 0, 0.14);
+  const va = {}; for (const v of K.s.v) va[v.i] = v;
   const vs = [];
-  for (const o of b.s.v) {
-    const p = va[o.i] || o, jump = Math.hypot(p.x - o.x, p.y - o.y) > 160;
-    vs.push({ o, x: jump ? o.x : lerp(p.x, o.x, al), y: jump ? o.y : lerp(p.y, o.y, al), g: clamp(lerp(p.g, o.g, al), 0, 1) });
+  for (const o of L.s.v) {
+    const p = va[o.i] || o, jump = Math.hypot(p.x - o.x, p.y - o.y) > 160 || o.s !== p.s && (o.s >= 5 || p.s >= 5);
+    let tx = o.x, ty = o.y;
+    if (!jump && o.g > 0.3) { tx += (o.x - p.x) / dtS * ex; ty += (o.y - p.y) / dtS * ex; }
+    vs.push({ o, x: tx, y: ty, g: o.g, jump });
   }
   return { players, vs };
 }
@@ -1473,7 +1479,7 @@ function applyVoids(view, dt) {
     const o = q.o; let v = NET.vmap.get(o.i);
     if (!v) { v = mkNetVoid(o); NET.vmap.set(o.i, v); }
     seen.add(o.i);
-    v.R = o.R; v.x = q.x; v.y = q.y; v.grow = q.g; v.state = SN[o.s] || 'stalk'; v.flash = o.f || 0; v.mood = o.fz ? 'freeze' : 'creep'; v.t += dt;
+    v.R = o.R; if (v.sx === undefined || q.jump) { v.sx = q.x; v.sy = q.y; } else { const k = Math.min(1, dt * 22); v.sx += (q.x - v.sx) * k; v.sy += (q.y - v.sy) * k; } v.x = v.sx; v.y = v.sy; v.grow = q.g; v.state = SN[o.s] || 'stalk'; v.flash = o.f || 0; v.mood = o.fz ? 'freeze' : 'creep'; v.t += dt;
     v.tel = o.tl ? { silent: !!o.tl[0], left: o.tl[1], dur: Math.max(0.01, o.tl[2]) } : { silent: true, left: 1, dur: 1 };
     v.bl = o.bl ? { timer: o.bl[0], warn: Math.max(0.01, o.bl[1]), show: !!o.bl[2], tx: o.bl[3], ty: o.bl[4], decoys: o.bl[5].map(d => ({ x: d[0], y: d[1] })) } : { timer: 1, warn: 1, show: false, tx: 0, ty: 0, decoys: [] };
     for (const t of v.trail) t.a -= dt * 1.8;
@@ -1557,7 +1563,7 @@ function updateMP(dt, now) {
       }
     }
     N.sendT -= dt;
-    if (N.sendT <= 0 && N.phase === 'play') { N.sendT = 0.05; netSend({ t: 'in', x: +P.x.toFixed(1), y: +P.y.toFixed(1), vx: Math.round(P.vx), vy: Math.round(P.vy), d: P.dashT > 0 ? 1 : 0 }); }
+    if (N.sendT <= 0 && N.phase === 'play') { N.sendT = 0.033; netSend({ t: 'in', l: Math.round(NET.ping || 0), x: +P.x.toFixed(1), y: +P.y.toFixed(1), vx: Math.round(P.vx), vy: Math.round(P.vy), d: P.dashT > 0 ? 1 : 0 }); }
   } else if (view) {
     const sp = view.players[N.spec];
     if (!sp || !sp.alive) specNext(true); else N.specPos = { x: sp.x, y: sp.y };
@@ -1599,7 +1605,8 @@ function syncRemotes(now, dt) {
   const ep = eyePos();
   for (const id in NET.rem) {
     const r = NET.rem[id], q = view.players[id]; if (!q) { r.g.visible = false; r.label.visible = false; r.sh.visible = false; continue; }
-    r.x = q.x; r.y = q.y;
+    if (r.sx === undefined) { r.sx = q.x; r.sy = q.y; } else { const k = Math.min(1, dt * 16); r.sx += (q.x + q.vx * 0.04 - r.sx) * k; r.sy += (q.y + q.vy * 0.04 - r.sy) * k; if (Math.hypot(q.x - r.sx, q.y - r.sy) > 120) { r.sx = q.x; r.sy = q.y; } }
+    r.x = r.sx; r.y = r.sy;
     const sc = q.alive ? 1 - 0.55 * q.sink : 0, vis = sc > 0.02;
     r.g.visible = vis; r.sh.visible = vis; r.label.visible = vis && darkF > 0.5;
     if (!vis) continue;

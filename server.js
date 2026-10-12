@@ -151,7 +151,7 @@ wss.on('connection', ws => {
         else if (me.id === room.hostId) send(ws, { t: 'err', c: 'start', m: 'لا يمكن البدء: يلزم ' + MIN_PLAYERS + ' لاعبين على الأقل، وكل اللاعبين جاهزون.' });
         break;
       case 'in':
-        if (room.state === 'play' && room.running && room.playing.includes(me)) room.sim.report(me, m.x, m.y, m.vx, m.vy, m.d);
+        if (room.state === 'play' && room.running && room.playing.includes(me)) room.sim.report(me, m.x, m.y, m.vx, m.vy, m.d, m.l);
         else if (room.state === 'play' && room.playing.includes(me)) { /* countdown: stay put */ }
         break;
       case 'dash': if (room.state === 'play' && room.running) room.sim.noteDash(me); break;
